@@ -42,7 +42,7 @@ koa.use(async (ctx,next)=>{
 .use(async (ctx,next)=>{
   /* 缓存 */
   await next(); if(ctx._end)return;
-  if(ctx._noCache || ctx.has('set-cookie') || ctx._deleteMy){ ctx.set('cache-control','no-store'); return }
+  if(ctx._suffix=='html' || ctx._noCache || ctx.has('set-cookie') || ctx._deleteMy ){ ctx.set('cache-control','no-store'); return }
   if(ctx._hash){ var hash=ctx._hash, mtime=ctx._fileInfo.mtime; } /* ctx._fileInfo={mtime} */
   else{
     /* ctx._fileInfo={mtime,size,mtimeMs,ctimeMs} */
@@ -59,7 +59,7 @@ koa.use(async (ctx,next)=>{
   else{
     await next();  if(ctx._end)return;
     /* .my后缀的模块 */
-    if(/\.my$/.test(ctx._url)){
+    if(ctx._suffix=='my'){
       let {size,mtimeMs,ctimeMs,mtime}=ctx._fileInfo??fs.statSync(ctx._url), id=require.resolve(ctx._url);
       ctx._hash=getHash({size,mtimeMs,ctimeMs}); ctx._fileInfo={mtime};
       if(require.cache[id]?._hash && require.cache[id]._hash!==ctx._hash)deleteRequireCache(ctx._url); 
@@ -96,7 +96,7 @@ koa.use(async (ctx,next)=>{
   ctx._suffix=/(?<=\.)[^.]+$/.exec(arr[0]);
   if(ctx._suffix){ ctx._suffix=ctx._suffix[0] }
   else{
-    if(/\/$/.test(ctx._url)){ctx._url+='index.html';}
+    if(/\/$/.test(ctx._url)){ctx._url+='index.html';ctx._suffix='html'}
     /* localhost/test 会跳转到 localhost/test/, 这样浏览器当前访问的就是test目录了, 而不是根目录 */
     else{ ctx.status=ctx.method.toUpperCase()=='GET'?301:308; ctx.set('Location',ctx._reUrl+'/'); ctx._end=true; return}
   }
