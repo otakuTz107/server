@@ -1,7 +1,7 @@
 process.on('uncaughtException', (reason,errName)=>console.log('processException '+reason))
 process.on('unhandledRejection', (reason,promise)=>console.log('processRejection '+reason))
 
-const Koa=require('koa'), fs=require('fs');
+const Koa=require('koa'), fs=require('fs'), crypto=require('crypto');
 const mimeObj=require('./ContentType.js');
 /* ctx._bodyContent, ctx._url, ctx._suffix, ctx._end, ctx._range */
 
@@ -22,7 +22,13 @@ koa.use(async (ctx,next)=>{
   else{
     await next(); if(ctx._end)return;
     /* .my后缀的模块 */
-    if(/\.my$/.test(ctx._url))require(ctx._url)(ctx)
+    if(/\.my$/.test(ctx._url)){
+      let {size,mtimeMs,ctimeMs}=ctx._fileInfo??fs.statSync(ctx._url), id=require.resolve(ctx._url);
+      ctx._hash=crypto.createHash('md5').update(`${size}${mtimeMs}${ctimeMs}`).digest('base64');
+      if(require.cache[id]?._hash && require.cache[id]._hash!==ctx._hash)deleteRequireCache(ctx._url); 
+      require(ctx._url)(ctx);
+      ctx._deleteMy? deleteRequireCache(ctx._url) : require.cache[id]._hash=ctx._hash;
+    }
     /* 普通文件 */
     else{ ctx._bodyContent=fs.createReadStream(ctx._url,{start:ctx._range.start,end:ctx._range.end}); }
   }
@@ -75,6 +81,10 @@ koa.use(async (ctx,next)=>{
 .listen(4444)
 
 
+function deleteRequireCache(url){
+  let id=require.resolve(url), arr=require.cache[require.resolve(__filename)].children
+  arr.splice(arr.indexOf(require.cache[id]),1);  delete require.cache[id]
+}
 function getMIME(str){
   let mime=mimeObj[str];
   return mime?mime:"text/html;charset=utf-8"
