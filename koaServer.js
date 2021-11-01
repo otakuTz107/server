@@ -4,7 +4,7 @@ process.on('unhandledRejection', (reason,promise)=>_log(reason))
 const Koa=require('koa'), fs=require('fs'), util=require('util'), crypto=require('crypto'), http=require('http');
 const mimeObj=require('./ContentType.js'), session=require('./modules/koaSession.js');
 
-/* 自定义ctx的属性: ctx._bodyContent, ctx._url, ctx._reUrl, ctx._suffix, ctx._end, ctx._noCache, ctx._deleteMy, ctx._range, */
+/* 自定义ctx的属性: ctx._bodyContent, ctx._url, ctx._reUrl, ctx._query, ctx._suffix, ctx._end, ctx._noCache, ctx._deleteMy, ctx._range, */
 /* 不稳定的属性: ctx._hash, ctx._fileInfo, */
 const conf={
   logDir: './log',
@@ -63,7 +63,7 @@ koa.use(async (ctx,next)=>{
       let {size,mtimeMs,ctimeMs,mtime}=ctx._fileInfo??fs.statSync(ctx._url), id=require.resolve(ctx._url);
       ctx._hash=getHash({size,mtimeMs,ctimeMs}); ctx._fileInfo={mtime};
       if(require.cache[id]?._hash && require.cache[id]._hash!==ctx._hash)deleteRequireCache(ctx._url); 
-      require(ctx._url)(ctx);
+      await require(ctx._url)(ctx);
       ctx._deleteMy? deleteRequireCache(ctx._url) : require.cache[id]._hash=ctx._hash;
     }
     /* 普通文件 */
@@ -90,6 +90,8 @@ koa.use(async (ctx,next)=>{
   ctx._reUrl='.'+arr[0];
   /* fs用的url(已处理) */
   ctx._url='.'+arr[0];
+  /* url的query(get) */
+  ctx._query=arr[1]
   /* url的后缀: ctx._suffix */
   ctx._suffix=/(?<=\.)[^.]+$/.exec(arr[0]);
   if(ctx._suffix){ ctx._suffix=ctx._suffix[0] }

@@ -3,14 +3,14 @@ process.on('unhandledRejection', (reason,promise)=>console.log('processRejection
 
 const Koa=require('koa'), fs=require('fs'), crypto=require('crypto');
 const mimeObj=require('./ContentType.js');
-/* ctx._bodyContent, ctx._url, ctx._suffix, ctx._end, ctx._range */
+/* ctx._bodyContent, ctx._url, ctx._query, ctx._suffix, ctx._end, ctx._range */
 
 const koa=new Koa(); koa.on('error',err=>console.log('koaErr',err)); /* 会捕获fs.createReadStream()的文件不存在的错误 */
 
 koa.use(async (ctx,next)=>{
   try{await next(); }catch(err){ console.log('catch err',err); }
   ctx.set('connection','close')
-  if(ctx._end)return;
+  if(ctx._end)return; /* ctx._end为true, 意味着ctx.status为301/304这类 */
   
   if(!ctx.has('content-type'))ctx.set('content-type',getMIME(ctx._suffix))
   if(ctx._bodyContent)ctx.body=ctx._bodyContent;
@@ -26,7 +26,7 @@ koa.use(async (ctx,next)=>{
       let {size,mtimeMs,ctimeMs}=ctx._fileInfo??fs.statSync(ctx._url), id=require.resolve(ctx._url);
       ctx._hash=crypto.createHash('md5').update(`${size}${mtimeMs}${ctimeMs}`).digest('base64');
       if(require.cache[id]?._hash && require.cache[id]._hash!==ctx._hash)deleteRequireCache(ctx._url); 
-      require(ctx._url)(ctx);
+      await require(ctx._url)(ctx);
       ctx._deleteMy? deleteRequireCache(ctx._url) : require.cache[id]._hash=ctx._hash;
     }
     /* 普通文件 */
@@ -49,15 +49,19 @@ koa.use(async (ctx,next)=>{
 })
 .use((ctx,next)=>{
   let arr=ctx.url.split('?'); 
-  /* 正常url: ctx._url */
+  /* 重定向用url(未处理) */
+  ctx._ReUrl='.'+arr[0]
+  /* fs用的url(已处理) */
   ctx._url='.'+arr[0];
+  /* url的query(get) */
+  ctx._query=arr[1]
   /* url的后缀: ctx._suffix */
   ctx._suffix=/(?<=\.)[^.]+$/.exec(arr[0]);
   if(ctx._suffix){ctx._suffix=ctx._suffix[0]}
   else{
     if(/\/$/.test(ctx._url)){ctx._url+='index.html';}
     /* localhost/test 会跳转到 localhost/test/, 这样浏览器当前访问的就是test目录了, 而不是根目录 */
-    else{ ctx.redirect(ctx._url+'/'); ctx._end=true; return}
+    else{ ctx.redirect(ctx._ReUrl+'/'); ctx._end=true; return}
   }
   next()
 })
