@@ -4,7 +4,7 @@ process.on('unhandledRejection', (reason,promise)=>_log(reason))
 const Koa=require('koa'), fs=require('fs'), util=require('util'), crypto=require('crypto'), http=require('http');
 const mimeObj=require('./ContentType.js'), session=require('./modules/koaSession.js');
 
-/* 自定义ctx的属性: ctx._bodyContent, ctx._url, ctx._reUrl, ctx._query, ctx._suffix, ctx._end, ctx._noCache, ctx._deleteMy, ctx._range, */
+/* 自定义ctx的属性: ctx._bodyContent, ctx._url, ctx._reUrl, ctx._query, ctx._suffix, ctx._end, ctx._deleteMy, ctx._range, */
 /* 不稳定的属性: ctx._hash, ctx._fileInfo, */
 const conf={
   logDir: './log',
@@ -42,7 +42,7 @@ koa.use(async (ctx,next)=>{
 .use(async (ctx,next)=>{
   /* 缓存 */
   await next(); if(ctx._end)return;
-  if(ctx._suffix=='html' || ctx._noCache || ctx.has('set-cookie') || ctx._deleteMy ){ ctx.set('cache-control','no-store'); return }
+  if(ctx._suffix=='html' || ctx.has('cache-control') || ctx.has('set-cookie') || ctx._deleteMy ){ ctx.set('cache-control','no-store'); return }
   if(ctx._hash){ var hash=ctx._hash, mtime=ctx._fileInfo.mtime; } /* ctx._fileInfo={mtime} */
   else{
     /* ctx._fileInfo={mtime,size,mtimeMs,ctimeMs} */
@@ -55,16 +55,28 @@ koa.use(async (ctx,next)=>{
 .use(session(koa))
 .use(async (ctx,next)=>{
   /* 主页 */
-  if(ctx.url=='/' || ctx.url=='/index.html'){ctx._bodyContent=fs.createReadStream('./index.html'); ctx._noCache=true} /* 由于该ReadStream时pipe(res), 所以res触发'close'时, 该ReadStream也会close */
+  if(ctx.url=='/' || ctx.url=='/index.html'){ctx._bodyContent=fs.createReadStream('./index.html'); ctx.set('cache-control','no-store')} /* 由于该ReadStream时pipe(res), 所以res触发'close'时, 该ReadStream也会close */
   else{
     await next();  if(ctx._end)return;
     /* .my后缀的模块 */
-    if(ctx._suffix=='my'){
-      let {size,mtimeMs,ctimeMs,mtime}=ctx._fileInfo??fs.statSync(ctx._url), id=require.resolve(ctx._url);
-      ctx._hash=getHash({size,mtimeMs,ctimeMs}); ctx._fileInfo={mtime};
-      if(require.cache[id]?._hash && require.cache[id]._hash!==ctx._hash)deleteRequireCache(ctx._url); 
-      await require(ctx._url)(ctx);
-      ctx._deleteMy? deleteRequireCache(ctx._url) : require.cache[id]._hash=ctx._hash;
+    if(ctx._suffix=='my'){ /* 有另一种写法, 在baseKoaServer.js, 无论require.cache[id]是否为undefined, 都会生成hash(但是代码少一点) */
+      let id=require.resolve(ctx._url);
+      if(require.cache[id]){
+        let {size,mtimeMs,ctimeMs,mtime}=ctx._fileInfo??fs.statSync(ctx._url); 
+        ctx._hash=getHash({size,mtimeMs,ctimeMs}); ctx._fileInfo={mtime};
+        if(require.cache[id]._hash!==ctx._hash){
+          deleteRequireCache(ctx._url); await require(ctx._url)(ctx); ctx._deleteMy? deleteRequireCache(ctx._url) : require.cache[id]._hash=ctx._hash;
+        }else{
+          await require(ctx._url)(ctx) 
+        }
+      }else{
+        await require(ctx._url)(ctx);
+        if(ctx._deleteMy)deleteRequireCache(ctx._url)
+        else{
+          let {size,mtimeMs,ctimeMs,mtime}=ctx._fileInfo??fs.statSync(ctx._url); ctx._fileInfo={mtime};
+          ctx._hash=getHash({size,mtimeMs,ctimeMs}); require.cache[id]._hash=ctx._hash;
+        }
+      }
     }
     /* 普通文件 */
     else{ ctx._bodyContent=fs.createReadStream(ctx._url,{start:ctx._range.start,end:ctx._range.end}); }

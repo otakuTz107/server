@@ -22,7 +22,7 @@ koa.use(async (ctx,next)=>{
   else{
     await next(); if(ctx._end)return;
     /* .my后缀的模块 */
-    if(ctx._suffix=='my'){
+    if(ctx._suffix=='my'){ /* 有另一种写法, 在koaServer.js, 只是优化了require,cache[id]=undefined的情况, 但是添加了不少代码 */
       let {size,mtimeMs,ctimeMs}=ctx._fileInfo??fs.statSync(ctx._url), id=require.resolve(ctx._url);
       ctx._hash=crypto.createHash('md5').update(`${size}${mtimeMs}${ctimeMs}`).digest('base64');
       if(require.cache[id]?._hash && require.cache[id]._hash!==ctx._hash)deleteRequireCache(ctx._url); 
