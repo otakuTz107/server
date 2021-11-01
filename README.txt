@@ -1,5 +1,5 @@
 baseKoaServer,  基本用于测试, 只有很简单的功能: 
-  1.基本的文件访问, 
+  1.基本的文件访问;  自己编写的功能性页面为 .my 后缀, eg: test.my文件: module.exports=function(ctx){ ctx._bodyContent='hellow' }
   2.range请求(requestHeader包含'range'), 
   3.跨域请求(allow all origin)
 
