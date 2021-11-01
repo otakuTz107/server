@@ -1,0 +1,4 @@
+module.exports=function(ctx){
+  ctx.session.views?'':ctx.session.views=1;
+  ctx._bodyContent='when refreshed, the number will increase: '+(ctx.session.views++);
+}
