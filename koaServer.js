@@ -33,12 +33,24 @@ koa.use(async (ctx,next)=>{
   _log=_log.bind(ctx); 
   try{await next();}catch(err){ _log(err) }
   ctx.set('connection','close'); /*关闭默认的keep-alive*/
-  ctx._noCache || ctx.has('set-cookie') || ctx._deleteMy? ctx.set('cache-control','no-store') : cacheFn(ctx);
-  if(ctx._end)return; /* 当status为 304 / 301 这类时, 直接return */
+  if(ctx._end)return; /* ctx._end为true, 意味着ctx.status为 304 / 301 这类 */
   
   if(!ctx.has('content-type'))ctx.set('content-type',getMIME(ctx._suffix));
   if(ctx._bodyContent)ctx.body=ctx._bodyContent;
   else{ ctx.body='null' }
+})
+.use(async (ctx,next)=>{
+  /* 缓存 */
+  await next(); if(ctx._end)return;
+  if(ctx._noCache || ctx.has('set-cookie') || ctx._deleteMy){ ctx.set('cache-control','no-store'); return }
+  if(ctx._hash){ var hash=ctx._hash, mtime=ctx._fileInfo.mtime; } /* ctx._fileInfo={mtime} */
+  else{
+    /* ctx._fileInfo={mtime,size,mtimeMs,ctimeMs} */
+    var {mtime,size,mtimeMs,ctimeMs}=ctx._fileInfo??fs.statSync(ctx._url), hash=getHash({size,mtimeMs,ctimeMs});
+  }
+  mtime=mtime.toISOString();
+  if(ctx.headers['if-none-match']===hash || ctx.headers['if-modified-since']===mtime){ ctx.status=304; ctx._end=true; }
+  else{ ctx.set('last-modified',mtime); ctx.set('etag',hash) }
 })
 .use(session(koa))
 .use(async (ctx,next)=>{
@@ -108,17 +120,6 @@ koa.use(async (ctx,next)=>{
 })
 
 
-function cacheFn(ctx){
-  /* 缓存 */
-  if(ctx._hash){ var hash=ctx._hash, mtime=ctx._fileInfo.mtime; } /* ctx._fileInfo={mtime} */
-  else{
-    /* ctx._fileInfo={mtime,size,mtimeMs,ctimeMs} */
-    var {mtime,size,mtimeMs,ctimeMs}=ctx._fileInfo??fs.statSync(ctx._url), hash=getHash({size,mtimeMs,ctimeMs});
-  }
-  mtime=mtime.toISOString();
-  if(ctx.headers['if-none-match']===hash || ctx.headers['if-modified-since']===mtime){ ctx.status=304; ctx._end=true; }
-  else{ ctx.set('last-modified',mtime); ctx.set('etag',hash) }
-}
 function deleteRequireCache(url){
   let id=require.resolve(url), arr=require.cache[require.resolve(__filename)].children
   arr.splice(arr.indexOf(require.cache[id]),1);  delete require.cache[id]
