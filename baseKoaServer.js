@@ -85,9 +85,14 @@ koa.use(async (ctx,next)=>{
 .listen(4444)
 
 
-function deleteRequireCache(url){
-  let id=require.resolve(url), arr=require.cache[require.resolve(__filename)].children
-  arr.splice(arr.indexOf(require.cache[id]),1);  delete require.cache[id]
+function deleteRequireCache(url,i){
+  url=require.resolve(url);
+  if(!i){
+    let arr=require.cache[require.resolve(__filename)].children;
+    arr.splice(arr.indexOf(require.cache[url]),1);
+  }
+  for(let module of require.cache[url].children)deleteRequireCache(module.id,true);
+  delete require.cache[url]
 }
 function getMIME(str){
   let mime=mimeObj[str];
