@@ -140,8 +140,10 @@ function deleteRequireCache(url,i){
     let arr=require.cache[require.resolve(__filename)].children;
     arr.splice(arr.indexOf(require.cache[url]),1);
   }
-  for(let module of require.cache[url].children)deleteRequireCache(module.id,true);
-  delete require.cache[url]
+  if(require.cache[url]){  //有时候 多个require.cache[url] 的children会包含同一个module, 所以要判断是否重复删除
+    for(let module of require.cache[url].children)deleteRequireCache(module.id,true);
+    delete require.cache[url]
+  }
 }
 function getHash(obj){ return crypto.createHash('md5').update(`${obj.size}${obj.mtimeMs}${obj.ctimeMs}`).digest('base64'); }
 function getMIME(str){
