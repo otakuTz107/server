@@ -12,16 +12,16 @@ koaServer,  比baseKoaServer多了缓存 & session, 以及很多基于缓存的�
 baseModuleServer,  用于处理 微信推送信息 这类;  可以 throw new ManualErr() ,该Error类型表示 手动抛出 的Error
 
 新加的ctx属性:
-  ctx._bodyContent,  相当于ctx.body;  区别是: 直接用 ctx.body=fs.createReadStream(...) 的话, ctx会自动设置 'content-type':'application/octet-stream' 
+  #ctx._bodyContent,  相当于ctx.body;  区别是: 直接用 ctx.body=fs.createReadStream(...) 的话, ctx会自动设置 'content-type':'application/octet-stream' 
   
-  ctx._url = req.url.split('?')[0], 
-  ctx._query = req.url.split('?')[1], 
-  ctx._suffix = String,  ctx._url的文件后缀(默认'html')
+  #ctx._url = req.url.split('?')[0], 
+  #ctx._query = req.url.split('?')[1], 
+  #ctx._suffix = String,  ctx._url的文件后缀(默认'html')
   
-  ctx._end = Boolean,  Server响应 301/304 这类时, 设 _end 为true可以减少代码流程
-  ctx._deleteMe = Boolean,  在 .my 脚本里, 设 _deleteMe 为true的话, 会在执行完该脚本后, 移除该脚本的require缓存, 同时也会移除该脚本所引用的module缓存(非内置)
-  ctx._range = {start: Int, end: Int},  对应请求头的Range字段, 默认 start:0, end:Infinity;
+  #ctx._end = Boolean,  Server响应 301/304 这类时, 设 _end 为true可以减少代码流程
+  #ctx._deleteMe = Boolean,  在 .my 脚本里, 设 _deleteMe 为true的话, 会在执行完该脚本后, 移除该脚本的require缓存, 同时也会移除该脚本所引用的module缓存(非内置)
+  #ctx._range = {start: Int, end: Int},  对应请求头的Range字段, 默认 start:0, end:Infinity;
   
 (可忽略)
-  ctx._fileInfo = {size,mtime,mtimeMs,ctimeMs},  对应 fs.statSync(ctx._url) ;  size,mtimeMs,ctimeMs 用于 etag 字段的值;  mtime 用于 last-modified 字段的值
-  ctx._hash = crypto.createHash('md5').update(`${size}${mtimeMs}${ctimeMs}`).digest('base64')
+  #ctx._fileInfo = {size,mtime,mtimeMs,ctimeMs},  对应 fs.statSync(ctx._url) ;  size,mtimeMs,ctimeMs 用于 etag 字段的值;  mtime 用于 last-modified 字段的值
+  #ctx._hash = crypto.createHash('md5').update(`${size}${mtimeMs}${ctimeMs}`).digest('base64')
