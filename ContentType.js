@@ -4,8 +4,10 @@ module.exports={
   "css": "text/css; charset=UTF-8",
   "txt": "text/plain; charset=UTF-8",
   "html": "text/html; charset=UTF-8",
+  "xml": "text/xml",
   
-  "json": "application/json; charset=UTF-8",
+  "json": "application/json",
+
 //video
   "mp4": "video/mp4",
 //audio

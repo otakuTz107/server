@@ -1,11 +1,31 @@
-process.on('uncaughtException', (reason,errName)=>console.log('processException '+reason))
-process.on('unhandledRejection', (reason,promise)=>console.log('processRejection '+reason))
-
 const Koa=require('koa'), fs=require('fs'), crypto=require('crypto');
-const mimeObj=require('./ContentType.js');
-/* ctx._bodyContent, ctx._url, ctx._query, ctx._suffix, ctx._end, ctx._range */
+const mimeObj={
+//文本
+  "js": "text/javascript; charset=UTF-8",
+  "css": "text/css; charset=UTF-8",
+  "txt": "text/plain; charset=UTF-8",
+  "html": "text/html; charset=UTF-8",
+  "xml": "text/xml",
+  
+  "json": "application/json",
+//video
+  "mp4": "video/mp4",
+//audio
+  "mp3": "audio/mpeg",
+//image
+  "ico": "image/x-icon",
+  "png": "image/png",
+  "jpg": "image/jpeg",
+  "gif": "image/gif",
+  "webp": "image/webp",
+}
+const koa=new Koa();
+/* ctx._bodyContent, ctx._url, ctx._query, ctx._suffix, ctx._end, ctx._range, ctx._deleteMe */
 
-const koa=new Koa(); koa.on('error',err=>console.log('koaErr',err)); /* 会捕获fs.createReadStream()的文件不存在的错误 */
+koa.on('error',err=>console.log('koaErr',err)); /* 会捕获fs.createReadStream()的文件不存在的错误 */
+process.on('uncaughtException', (reason,errName)=>console.log('uncaughtException '+reason))
+process.on('unhandledRejection', (reason,promise)=>console.log('unhandledRejection '+reason))
+/*koa.silent=true;*/
 
 koa.use(async (ctx,next)=>{
   try{await next(); }catch(err){ console.log('catch err',err); }
@@ -14,7 +34,6 @@ koa.use(async (ctx,next)=>{
   
   if(!ctx.has('content-type'))ctx.set('content-type',getMIME(ctx._suffix))
   if(ctx._bodyContent)ctx.body=ctx._bodyContent;
-  else{ ctx.body='null'; }
 })
 .use(async (ctx,next)=>{
   /* 主页 */
@@ -27,7 +46,7 @@ koa.use(async (ctx,next)=>{
       ctx._hash=crypto.createHash('md5').update(`${size}${mtimeMs}${ctimeMs}`).digest('base64');
       if(require.cache[id]?._hash && require.cache[id]._hash!==ctx._hash)deleteRequireCache(ctx._url); 
       await require(ctx._url)(ctx);
-      ctx._deleteMy? deleteRequireCache(ctx._url) : require.cache[id]._hash=ctx._hash;
+      ctx._deleteMe? deleteRequireCache(ctx._url) : require.cache[id]._hash=ctx._hash;
     }
     /* 普通文件 */
     else{ ctx._bodyContent=fs.createReadStream(ctx._url,{start:ctx._range.start,end:ctx._range.end}); }
@@ -49,9 +68,6 @@ koa.use(async (ctx,next)=>{
 })
 .use((ctx,next)=>{
   let arr=ctx.url.split('?'); 
-  /* 重定向用url(未处理) */
-  ctx._ReUrl='.'+arr[0]
-  /* fs用的url(已处理) */
   ctx._url='.'+arr[0];
   /* url的query(get) */
   ctx._query=arr[1]
@@ -61,12 +77,12 @@ koa.use(async (ctx,next)=>{
   else{
     if(/\/$/.test(ctx._url)){ctx._url+='index.html';ctx._suffix='html'}
     /* localhost/test 会跳转到 localhost/test/, 这样浏览器当前访问的就是test目录了, 而不是根目录 */
-    else{ ctx.redirect(ctx._ReUrl+'/'); ctx._end=true; return}
+    else{ ctx.redirect(ctx._url+'/'); ctx._end=true; return}
   }
   next()
 })
 .use((ctx,next)=>{
-  /* 支持Range */
+  /* 支持Range;  ctx._range */
   next()
   if(ctx.headers.range){
     let total=fs.statSync(ctx._url).size, arr=/bytes\s*=\s*(\d+)\s*-\s*(\d*)/.exec(ctx.headers.range);
