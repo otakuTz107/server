@@ -37,7 +37,7 @@ server.keepAliveTimeout=5000;
 server.maxHeadersCount=2000;
 
 /* WebSocket, "ws"模块会自动监听 http(s) server 的"upgrade"事件, 处理 Upgrade: websocket 的请求并建立 WebSocket 连接 */
-require("./ws/ws.my")(server)
+//require("./ws/ws.my")(server)
 
 koa.use(async (ctx,next)=>{
   await next(); 
