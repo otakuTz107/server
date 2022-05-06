@@ -1,3 +1,4 @@
+"use strict"
 let qs=require('querystring');
 module.exports= ctx => new Promise((f,r)=>{
   let data='';

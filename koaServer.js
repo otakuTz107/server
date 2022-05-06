@@ -1,9 +1,11 @@
-const Koa=require('koa'), fs=require('fs'), util=require('util'), crypto=require('crypto'), http=require('http');
+"use strict"
+const Koa=require('koa'), fs=require('fs'), crypto=require('crypto'), http=require('http');
 const mimeObj=require('./ContentType.js'), session=require('./modules/koaSession.js');
 
-/* 自定义ctx的属性: ctx._bodyContent, ctx._url, ctx._query, ctx._suffix, ctx._end, ctx._deleteMe, ctx._range*/
+/* 自定义ctx的属性: ctx._bodyContent, ctx._url, ctx._query, ctx._filename, ctx._suffix, ctx._end, ctx._deleteMe, ctx._range*/
 /* 1.ctx._deleteMe,  值为 true 时(在 .my 文件里), 会不缓存 该require模块 ) 
    2.ctx._bodyContent,  调用 ctx.body=*ReadableStream* 时, 如果这是 content-type 头没设置, koa会自动设为 'application/octet-stream';  而用 ctx._bodyContent 代替 ctx.body 就不会自动设置响应头
+   3.ctx._url,  相当于去掉query的ctx.url(并添加了"."前缀, eg: ctx.url 为 "/test.my?name=tz",  ctx._url 则为 "./test.my")
 */
 /* 不稳定的属性: ctx._hash, ctx._fileInfo, */
 const conf={
@@ -32,14 +34,28 @@ server.setTimeout=120000;
 server.keepAliveTimeout=5000;
 server.maxHeadersCount=2000;
 
+/* WebSocket, "ws"模块会自动监听 http(s) server 的"upgrade"事件, 处理 Upgrade: websocket 的请求并建立 WebSocket 连接 */
+require('./modules/ws/ws.my')(server)
+
 koa.use(async (ctx,next)=>{
   _log=_log.bind(ctx); 
-  try{await next();}catch(err){ _log(err) }
+  await next();
   ctx.set('connection','close'); /*关闭默认的keep-alive*/
   if(ctx._end)return; /* ctx._end为true, 意味着ctx.status为 304 / 301 这类 */
   
   if(!ctx.has('content-type'))ctx.set('content-type',getMIME(ctx._suffix));
   if(ctx._bodyContent)ctx.body=ctx._bodyContent;
+})
+.use(async (ctx,next)=>{
+  /*for initialization*/
+  Object.defineProperty(ctx,"_bodyContent",{   
+    set(val){   /*当ctx._bodyContent的值为ReadStream时(pipe), 若ReadStream在读取数据过程中发生错误, 会触发ctx.res的"end"*/
+      ctx.__bodyContent=val; 
+      if(val?.pipe){ val.on('error',()=>ctx.res.end()) }
+    },  
+    get(){return ctx.__bodyContent}
+  })
+  await next()
 })
 .use(async (ctx,next)=>{
   /* 缓存 */
@@ -79,10 +95,13 @@ koa.use(async (ctx,next)=>{
       }
     }
     /* 普通文件 */
-    else{ctx._bodyContent=fs.createReadStream(ctx._url,{start:ctx._range.start,end:ctx._range.end}); ctx.set('content-type','text/html')}
+    else{
+      if(!ctx._range)ctx._range={start:0, end:Infinity}; 
+      ctx._bodyContent=fs.createReadStream(ctx._url,{start:ctx._range.start,end:ctx._range.end})
+    }
   }
 })
-.use((ctx,next)=>{
+.use(async (ctx,next)=>{
   /* CORS 跨域请求 */
   if(ctx.method.toUpperCase()=='OPTIONS'){
     ctx.headers['access-control-request-method']? ctx.set('access-control-allow-methods',ctx.headers['access-control-request-method']) : '';
@@ -94,26 +113,25 @@ koa.use(async (ctx,next)=>{
     ctx.set('access-control-allow-credentials',true);
     ctx.set('access-control-allow-origin',ctx.headers.origin)
   }
-  next()
+  await next()
 })
-.use((ctx,next)=>{
+.use(async (ctx,next)=>{
   let arr=ctx.url.split('?'); 
   ctx._url='.'+arr[0];
   /* url的query(get) */
   ctx._query=arr[1]
   /* url的后缀: ctx._suffix */
-  ctx._suffix=/(?<=\.)[^.]+$/.exec(arr[0]);
-  if(ctx._suffix){ ctx._suffix=ctx._suffix[0] }
-  else{
-    if(/\/$/.test(ctx._url)){ctx._url+='index.html';ctx._suffix='html'}
+  arr=/([^\s\/]+)\.([^\s\/]+)$/.exec(ctx._url);  
+  if(arr){ ctx._filename=arr[1];  ctx._suffix=arr[2] }
+  else{ 
+    if(/\/$/.test(ctx._url)){ ctx._url+='index.html';  ctx._suffix='my';  ctx._filename='index' }
     /* localhost/test 会跳转到 localhost/test/, 这样浏览器当前访问的就是test目录了, 而不是根目录 */
-    else{ ctx.status=ctx.method.toUpperCase()=='GET'?301:308; ctx.set('Location',ctx._url+'/'); ctx._end=true; return}
+    else{ ctx.redirect(ctx._url.replace(/^\./,'')+'/'); ctx._end=true; return }
   }
-  next()
+  await next()
 })
-.use((ctx,next)=>{
+.use(async (ctx,next)=>{
   /* 支持Range */
-  next()
   if(ctx.headers.range){
     let {size,mtime,mtimeMs,ctimeMs}=fs.statSync(ctx._url), arr=/bytes\s*=\s*(\d+)\s*-\s*(\d*)/.exec(ctx.headers.range);
     ctx._fileInfo={size,mtime,mtimeMs,ctimeMs};
@@ -124,10 +142,9 @@ koa.use(async (ctx,next)=>{
       ctx._range={start:arr[1], end:arr[2]}
       ctx.status=206; ctx.set('content-range',`bytes ${arr[1]}-${arr[2]}/${size}`); 
       ctx.set('accept-ranges','bytes'); ctx.set('content-length',m<size?m+1:size);
-      return;
     }
   }
-  ctx._range={start:0, end:Infinity};
+  await next()
 })
 
 

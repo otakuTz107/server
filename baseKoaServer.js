@@ -1,5 +1,7 @@
-const Koa=require('koa'), fs=require('fs'), crypto=require('crypto');
-const mimeObj={
+"use strict"
+const Koa=require('koa'), http=require('http'), fs=require('fs'), crypto=require('crypto');
+let mimeObj=null;
+try{ mimeObj=require('./ContentType.js') }catch(err){ mimeObj={
 //文本
   "js": "text/javascript; charset=UTF-8",
   "css": "text/css; charset=UTF-8",
@@ -18,22 +20,44 @@ const mimeObj={
   "jpg": "image/jpeg",
   "gif": "image/gif",
   "webp": "image/webp",
-}
+}}
 const koa=new Koa();
-/* ctx._bodyContent, ctx._url, ctx._query, ctx._suffix, ctx._end, ctx._range, ctx._deleteMe */
+/* ctx._bodyContent, ctx._url, ctx._query, ctx._filename, ctx._suffix, ctx._end, ctx._range, ctx._deleteMe */
 
-koa.on('error',err=>console.log('koaErr',err)); /* 会捕获fs.createReadStream()的文件不存在的错误 */
-process.on('uncaughtException', (reason,errName)=>console.log('uncaughtException '+reason))
-process.on('unhandledRejection', (reason,promise)=>console.log('unhandledRejection '+reason))
+koa.on('error',err=>console.log('koaErr: ',koa._ctx.url,err)); /* 会捕获fs.createReadStream()的文件不存在的错误 */
+process.on('uncaughtException', (err,errName)=>console.log('uncaughtException:',koa._ctx.url,err))
+process.on('unhandledRejection', (err,promise)=>console.log('unhandledRejection:',koa._ctx.url,err))
 /*koa.silent=true;*/
 
+const server=http.createServer({maxHeaderSize:16384},koa.callback()).listen(4444)
+server.headersTimeout=60000;
+server.requestTimeout=0;
+server.setTimeout=120000;
+server.keepAliveTimeout=5000;
+server.maxHeadersCount=2000;
+
+/* WebSocket, "ws"模块会自动监听 http(s) server 的"upgrade"事件, 处理 Upgrade: websocket 的请求并建立 WebSocket 连接 */
+require("./ws/ws.my")(server)
+
 koa.use(async (ctx,next)=>{
-  try{await next(); }catch(err){ console.log('catch err',err); }
+  await next(); 
   ctx.set('connection','close')
   if(ctx._end)return; /* ctx._end为true, 意味着ctx.status为301/304这类 */
   
   if(!ctx.has('content-type'))ctx.set('content-type',getMIME(ctx._suffix))
   if(ctx._bodyContent)ctx.body=ctx._bodyContent;
+})
+.use(async (ctx,next)=>{
+  /*for initialization*/
+  koa._ctx=ctx
+  Object.defineProperty(ctx,"_bodyContent",{   
+    set(val){   /*当ctx._bodyContent的值为ReadStream时(pipe), 若ReadStream在读取数据过程中发生错误, 会触发ctx.res的"end"*/
+      ctx.__bodyContent=val; 
+      if(val?.pipe){ val.on('error',()=>ctx.res.end()) }
+    },  
+    get(){return ctx.__bodyContent}
+  })
+  await next()
 })
 .use(async (ctx,next)=>{
   /* 主页 */
@@ -49,10 +73,13 @@ koa.use(async (ctx,next)=>{
       ctx._deleteMe? deleteRequireCache(ctx._url) : require.cache[id]._hash=ctx._hash;
     }
     /* 普通文件 */
-    else{ ctx._bodyContent=fs.createReadStream(ctx._url,{start:ctx._range.start,end:ctx._range.end}); }
+    else{ 
+      if(!ctx._range)ctx._range={start:0, end:Infinity}; 
+      ctx._bodyContent=fs.createReadStream(ctx._url,{start:ctx._range.start,end:ctx._range.end})
+    }
   }
 })
-.use((ctx,next)=>{
+.use(async (ctx,next)=>{
   /* CORS 跨域请求 */
   if(ctx.method.toUpperCase()=='OPTIONS'){
     ctx.headers['access-control-request-method']? ctx.set('access-control-allow-methods',ctx.headers['access-control-request-method']) : '';
@@ -64,26 +91,25 @@ koa.use(async (ctx,next)=>{
     ctx.set('access-control-allow-credentials',true);
     ctx.set('access-control-allow-origin',ctx.headers.origin)
   }
-  next()
+  await next()
 })
-.use((ctx,next)=>{
+.use(async (ctx,next)=>{
   let arr=ctx.url.split('?'); 
   ctx._url='.'+arr[0];
   /* url的query(get) */
   ctx._query=arr[1]
   /* url的后缀: ctx._suffix */
-  ctx._suffix=/(?<=\.)[^.]+$/.exec(arr[0]);
-  if(ctx._suffix){ctx._suffix=ctx._suffix[0]}
-  else{
-    if(/\/$/.test(ctx._url)){ctx._url+='index.html';ctx._suffix='html'}
+  arr=/([^\s\/]+)\.([^\s\/]+)$/.exec(ctx._url);  
+  if(arr){ ctx._filename=arr[1];  ctx._suffix=arr[2] }
+  else{ 
+    if(/\/$/.test(ctx._url)){ ctx._url+='index.html';  ctx._suffix='my';  ctx._filename='index' }
     /* localhost/test 会跳转到 localhost/test/, 这样浏览器当前访问的就是test目录了, 而不是根目录 */
-    else{ ctx.redirect(ctx._url+'/'); ctx._end=true; return}
+    else{ ctx.redirect(ctx._url.replace(/^\./,'')+'/'); ctx._end=true; return }
   }
-  next()
+  await next()
 })
-.use((ctx,next)=>{
+.use(async (ctx,next)=>{
   /* 支持Range;  ctx._range */
-  next()
   if(ctx.headers.range){
     let total=fs.statSync(ctx._url).size, arr=/bytes\s*=\s*(\d+)\s*-\s*(\d*)/.exec(ctx.headers.range);
     arr[1]=parseInt(arr[1]); 
@@ -93,13 +119,10 @@ koa.use(async (ctx,next)=>{
       ctx._range={start:arr[1], end:arr[2]}
       ctx.status=206; ctx.set('content-range',`bytes ${arr[1]}-${arr[2]}/${total}`); 
       ctx.set('accept-ranges','bytes'); ctx.set('content-length',m<total?m+1:total);
-      return;
     }
   }
-  ctx._range={start:0, end:Infinity};
+  await next()
 })
-.listen(4444)
-
 
 function deleteRequireCache(url,i){
   url=require.resolve(url);

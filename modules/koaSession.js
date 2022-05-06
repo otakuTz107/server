@@ -1,3 +1,4 @@
+"use strict"
 module.exports=require('koa-session').bind(null,{
   key: 'koa.sess',
 	maxAge: 86400000,
