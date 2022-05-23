@@ -102,7 +102,7 @@ koa.use(async (ctx,next)=>{
   arr=/([^\s\/]+)\.([^\s\/]+)$/.exec(ctx._url);  
   if(arr){ ctx._filename=arr[1];  ctx._suffix=arr[2] }
   else{ 
-    if(/\/$/.test(ctx._url)){ ctx._url+='index.html';  ctx._suffix='my';  ctx._filename='index' }
+    if(/\/$/.test(ctx._url)){ ctx._url+='index.html';  ctx._suffix='html';  ctx._filename='index' }
     /* localhost/test 会跳转到 localhost/test/, 这样浏览器当前访问的就是test目录了, 而不是根目录 */
     else{ ctx.redirect(ctx._url.replace(/^\./,'')+'/'); ctx._end=true; return }
   }
