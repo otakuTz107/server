@@ -4,12 +4,11 @@ baseKoaServer,  基本用于测试, 只有很简单的功能:
   3.跨域请求(allow all origin)
 
 koaServer,  比baseKoaServer多了缓存 & session, 以及很多基于缓存的改动
-  --不缓存规则(响应 'cache-control: no-store' ):
+  --不缓存规则(主动响应 'cache-control: no-store' ):
       1.后缀(ctx_suffix)为'html'
       2.已设置 'cache-control / set-cookie' 字段
       3.ctx._deleteMe为true
 
-baseModuleServer,  用于处理 微信推送信息 这类;  可以 throw new ManualErr() ,该Error类型表示 手动抛出 的Error
 
 新加的ctx属性:
   #ctx._bodyContent,  相当于ctx.body;  区别是: 直接用 ctx.body=fs.createReadStream(...) 的话, ctx会自动设置 'content-type':'application/octet-stream' 
