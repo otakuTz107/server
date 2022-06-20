@@ -64,7 +64,7 @@ koa.use(async (ctx,next)=>{
   if(!ctx._hash){
     let {mtime,size,mtimeMs,ctimeMs}=ctx._fileInfo??fs.statSync(ctx._url);  ctx._hash=getHash({size,mtimeMs,ctimeMs});  ctx._fileInfo={mtime};
   }
-  mtime=ctx._fileInfo.mtime.toISOString();
+  let mtime=ctx._fileInfo.mtime.toISOString();
   if(ctx.headers['if-none-match']===ctx._hash || ctx.headers['if-modified-since']===mtime){ ctx.status=304; ctx._end=true; }
   else{ ctx.set('last-modified',mtime); ctx.set('etag',ctx._hash) }
 })
